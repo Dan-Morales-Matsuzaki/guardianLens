@@ -1,10 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useState } from 'react';
-import { Button, Image, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Image, ScrollView, StyleSheet, View } from 'react-native';
 
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+
+// AppSync configuration
+const REGION = 'ap-northeast-1';
+const API_KEY = 'da2-lears2uxf5eunibvzzpz2xjtu4';
+const GRAPHQL_ENDPOINT =
+  'https://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-api.ap-northeast-1.amazonaws.com/graphql';
+const REALTIME_ENDPOINT =
+  'wss://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-realtime-api.ap-northeast-1.amazonaws.com/graphql';
 
 type Entry = {
   id: number;
@@ -12,43 +20,144 @@ type Entry = {
   time: string;
 };
 
+type DynamoEntry = {
+  device_id: string;
+  timestamp: string;
+  status: string;
+  message: string;
+  location: string;
+};
+
+// Subscription query — must match your schema
+const SUBSCRIPTION_QUERY = `
+  subscription OnCreateGuardianEventTable {
+    onCreateGuardianEventTable {
+      device_id
+      timestamp
+      event
+      status
+      message
+      location
+      intent
+      updated_at
+    }
+  }
+`;
+
 export default function HomeScreen() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [remoteEntries, setRemoteEntries] = useState<DynamoEntry[]>([]);
+  const ws = useRef<WebSocket | null>(null);
 
-  // Load stored entries on app start
+  // Load local entries
   useEffect(() => {
-    const loadEntries = async () => {
+    (async () => {
       try {
         const stored = await AsyncStorage.getItem('historyEntries');
-        if (stored) {
-          setEntries(JSON.parse(stored));
-        }
+        if (stored) setEntries(JSON.parse(stored));
       } catch (error) {
-        console.error('Failed to load entries:', error);
+        console.error('⚠️ Failed to load local entries:', error);
       }
-    };
-    loadEntries();
+    })();
   }, []);
 
-  // Add new entry manually
+  // Add a new local entry
   const addEntry = async () => {
     const now = new Date();
     const newEntry: Entry = {
       id: Date.now(),
-      deviceName: `Device ${entries.length + 1}`,
+      deviceName: `Device ${entries.length}`,
       time: now.toLocaleTimeString(),
     };
-
     const updated = [newEntry, ...entries];
     setEntries(updated);
     await AsyncStorage.setItem('historyEntries', JSON.stringify(updated));
   };
 
-  // Clear history completely
+  // Clear local entries
   const clearHistory = async () => {
     await AsyncStorage.removeItem('historyEntries');
     setEntries([]);
   };
+
+  // Connect to AWS AppSync realtime WebSocket
+  useEffect(() => {
+    const connectToAppSync = () => {
+      const initPayload = {
+        type: 'connection_init',
+        payload: {
+          headers: {
+            host: GRAPHQL_ENDPOINT.replace('https://', ''),
+            'x-api-key': API_KEY,
+          },
+        },
+      };
+
+      const startPayload = {
+        id: '1',
+        type: 'start',
+        payload: {
+          data: JSON.stringify({ query: SUBSCRIPTION_QUERY }),
+          extensions: {
+            authorization: {
+              host: GRAPHQL_ENDPOINT.replace('https://', ''),
+              'x-api-key': API_KEY,
+            },
+          },
+        },
+      };
+
+      const socket = new WebSocket(REALTIME_ENDPOINT, 'graphql-ws');
+      ws.current = socket;
+
+      socket.onopen = () => {
+        console.log('Connected to AppSync Realtime');
+        socket.send(JSON.stringify(initPayload));
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          //keep-alive message from AppSync
+          if (msg.type === 'ka') {
+            // console.log('keep-alive');
+            return;
+          }
+
+          // connection acknowledged
+          if (msg.type === 'connection_ack') {
+            console.log('🔗 Connection acknowledged by AppSync');
+            socket.send(JSON.stringify(startPayload));
+            console.log('Subscribed to live updates');
+            return;
+          }
+
+          //new event pushed by AppSync
+          if (msg.type === 'data' && msg.payload?.data?.onCreateGuardianEventTable) {
+            const newItem = msg.payload.data.onCreateGuardianEventTable;
+            console.log('Live event received:', newItem);
+            setRemoteEntries((prev) => [newItem, ...prev]);
+          }
+        } catch (e) {
+          console.error('Error parsing message', e);
+        }
+      };
+
+      socket.onerror = (e) => console.error('WebSocket error:', e);
+
+      socket.onclose = () => {
+        console.warn('WebSocket closed, reconnecting in 5s...');
+        setTimeout(connectToAppSync, 5000);
+      };
+    };
+
+    connectToAppSync();
+
+    return () => {
+      ws.current?.close();
+    };
+  }, []);
 
   return (
     <ParallaxScrollView
@@ -64,29 +173,49 @@ export default function HomeScreen() {
         </ThemedView>
       }
     >
-      {/* History Section */}
+      {/* LOCAL HISTORY */}
       <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">History</ThemedText>
-
+        <ThemedText type="subtitle">Local History</ThemedText>
         <View style={styles.boxContainer}>
-          {entries.map((entry) => (
-            <ThemedView key={entry.id} style={styles.roundedBox}>
-              <ThemedText style={styles.boxText}>{entry.deviceName}</ThemedText>
-              <ThemedText style={styles.boxContent}>
-                Time: {entry.time}
-              </ThemedText>
-            </ThemedView>
-          ))}
-
-          {entries.length === 0 && (
+          {entries.length > 0 ? (
+            entries.map((entry) => (
+              <ThemedView key={entry.id} style={styles.roundedBox}>
+                <ThemedText style={styles.boxText}>{entry.deviceName}</ThemedText>
+                <ThemedText style={styles.boxContent}>Time: {entry.time}</ThemedText>
+              </ThemedView>
+            ))
+          ) : (
             <ThemedView style={styles.roundedBox}>
-              <ThemedText style={styles.boxContent}>No scans yet.</ThemedText>
+              <ThemedText style={styles.boxContent}>No local scans yet.</ThemedText>
             </ThemedView>
           )}
         </View>
       </ThemedView>
 
-      {/* Icons & Buttons */}
+      {/* REMOTE EVENTS */}
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Remote Events</ThemedText>
+        <ScrollView style={styles.boxContainer}>
+          {remoteEntries.length > 0 ? (
+            remoteEntries.map((item, index) => (
+              <ThemedView key={index} style={styles.roundedBox}>
+                <ThemedText style={styles.boxText}>Status: {item.status}</ThemedText>
+                <ThemedText style={styles.boxContent}>Message: {item.message}</ThemedText>
+                <ThemedText style={styles.boxContent}>Location: {item.location}</ThemedText>
+                <ThemedText style={styles.boxTimestamp}>
+                  {new Date(item.timestamp).toLocaleString()}
+                </ThemedText>
+              </ThemedView>
+            ))
+          ) : (
+            <ThemedView style={styles.roundedBox}>
+              <ThemedText style={styles.boxContent}>No live events yet.</ThemedText>
+            </ThemedView>
+          )}
+        </ScrollView>
+      </ThemedView>
+
+      {/* ICONS + LOCAL BUTTONS */}
       <ThemedView style={styles.bottomContainer}>
         <View style={styles.iconContainer}>
           <Image
@@ -106,7 +235,7 @@ export default function HomeScreen() {
             <Button title="Add Entry" onPress={addEntry} color="#f47b20" />
           </View>
           <View style={styles.buttonWrapper}>
-            <Button title="Clear History" onPress={clearHistory} color="#999" />
+            <Button title="Clear Local" onPress={clearHistory} color="#999" />
           </View>
         </View>
       </ThemedView>
@@ -114,6 +243,7 @@ export default function HomeScreen() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   headerContainer: {
     flex: 1,
@@ -154,6 +284,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingTop: 4,
   },
+  boxTimestamp: {
+    color: '#444',
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: 'right',
+  },
   bottomContainer: {
     marginTop: 30,
     alignItems: 'center',
@@ -166,7 +302,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   icon: {
-    width: 60, // 🔹 slightly smaller
+    width: 60,
     height: 60,
   },
   buttonRow: {

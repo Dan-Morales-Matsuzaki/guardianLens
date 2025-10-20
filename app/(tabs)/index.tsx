@@ -5,14 +5,55 @@ import { Button, Image, ScrollView, StyleSheet, View } from 'react-native';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import AppSync from './AppSync';
 
-// AppSync configuration
-const REGION = 'ap-northeast-1';
-const API_KEY = 'da2-lears2uxf5eunibvzzpz2xjtu4';
-const GRAPHQL_ENDPOINT =
-  'https://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-api.ap-northeast-1.amazonaws.com/graphql';
-const REALTIME_ENDPOINT =
-  'wss://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-realtime-api.ap-northeast-1.amazonaws.com/graphql';
+//""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// import Client from 'aws-appsync';
+// import { Rehydrated } from 'aws-appsync-react';
+// import { ApolloProvider } from 'react-apollo';
+
+// const client = new Client({
+//   url: AppSync.graphqlEndpoint,
+//   region: AppSync.region,
+//   auth:{
+//     type: 'API_KEY',
+//     apiKey: AppSync.apiKey
+//   }
+// })
+
+// const WithProvider = () => (
+//   <ApolloProvider client ={client as any}>
+//     <Rehydrated>
+//       <App />
+//     </Rehydrated>
+//   </ApolloProvider>
+// )
+//""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+import { Amplify } from 'aws-amplify';
+
+Amplify.configure({
+  API: {
+    Events: {
+      endpoint: AppSync.graphqlEndpoint,
+      region: AppSync.region,
+      defaultAuthMode: 'apiKey',
+      apiKey: AppSync.apiKey,
+    },
+  },
+});
+
+
+
+
+
+// // AppSync configuration
+// const REGION = 'ap-northeast-1';
+// const API_KEY = 'da2-lears2uxf5eunibvzzpz2xjtu4';
+// const GRAPHQL_ENDPOINT =
+//   'https://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-api.ap-northeast-1.amazonaws.com/graphql';
+// const REALTIME_ENDPOINT =
+//   'wss://6jg4v7pdybhwjpsnyxvsfljyqa.appsync-realtime-api.ap-northeast-1.amazonaws.com/graphql';
 
 type Entry = {
   id: number;
@@ -28,21 +69,21 @@ type DynamoEntry = {
   location: string;
 };
 
-// Subscription query — must match your schema
-const SUBSCRIPTION_QUERY = `
-  subscription OnCreateGuardianEventTable {
-    onCreateGuardianEventTable {
-      device_id
-      timestamp
-      event
-      status
-      message
-      location
-      intent
-      updated_at
-    }
-  }
-`;
+// // Subscription query — must match your schema
+// const SUBSCRIPTION_QUERY = `
+//   subscription OnCreateGuardianEventTable {
+//     onCreateGuardianEventTable {
+//       device_id
+//       timestamp
+//       event
+//       status
+//       message
+//       location
+//       intent
+//       updated_at
+//     }
+//   }
+// `;
 
 export default function HomeScreen() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -79,85 +120,6 @@ export default function HomeScreen() {
     await AsyncStorage.removeItem('historyEntries');
     setEntries([]);
   };
-
-  // Connect to AWS AppSync realtime WebSocket
-  useEffect(() => {
-    const connectToAppSync = () => {
-      const initPayload = {
-        type: 'connection_init',
-        payload: {
-          headers: {
-            host: GRAPHQL_ENDPOINT.replace('https://', ''),
-            'x-api-key': API_KEY,
-          },
-        },
-      };
-
-      const startPayload = {
-        id: '1',
-        type: 'start',
-        payload: {
-          data: JSON.stringify({ query: SUBSCRIPTION_QUERY }),
-          extensions: {
-            authorization: {
-              host: GRAPHQL_ENDPOINT.replace('https://', ''),
-              'x-api-key': API_KEY,
-            },
-          },
-        },
-      };
-
-      const socket = new WebSocket(REALTIME_ENDPOINT, 'graphql-ws');
-      ws.current = socket;
-
-      socket.onopen = () => {
-        console.log('Connected to AppSync Realtime');
-        socket.send(JSON.stringify(initPayload));
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-
-          //keep-alive message from AppSync
-          if (msg.type === 'ka') {
-            // console.log('keep-alive');
-            return;
-          }
-
-          // connection acknowledged
-          if (msg.type === 'connection_ack') {
-            console.log('🔗 Connection acknowledged by AppSync');
-            socket.send(JSON.stringify(startPayload));
-            console.log('Subscribed to live updates');
-            return;
-          }
-
-          //new event pushed by AppSync
-          if (msg.type === 'data' && msg.payload?.data?.onCreateGuardianEventTable) {
-            const newItem = msg.payload.data.onCreateGuardianEventTable;
-            console.log('Live event received:', newItem);
-            setRemoteEntries((prev) => [newItem, ...prev]);
-          }
-        } catch (e) {
-          console.error('Error parsing message', e);
-        }
-      };
-
-      socket.onerror = (e) => console.error('WebSocket error:', e);
-
-      socket.onclose = () => {
-        console.warn('WebSocket closed, reconnecting in 15s...');
-        setTimeout(connectToAppSync, 15000);
-      };
-    };
-
-    connectToAppSync();
-
-    return () => {
-      ws.current?.close();
-    };
-  }, []);
 
   return (
     <ParallaxScrollView

@@ -147,8 +147,8 @@ export default function HomeScreen() {
       socket.onerror = (e) => console.error('WebSocket error:', e);
 
       socket.onclose = () => {
-        console.warn('WebSocket closed, reconnecting in 5s...');
-        setTimeout(connectToAppSync, 5000);
+        console.warn('WebSocket closed, reconnecting in 15s...');
+        setTimeout(connectToAppSync, 15000);
       };
     };
 

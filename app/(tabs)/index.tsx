@@ -6,8 +6,8 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-import AppSync from './aws-config'; // ✅ fixed relative path (no .js needed in RN)
-import { ADD_EVENT, LIST_EVENTS, SUBSCRIBE_EVENTS } from './graphql'; // ✅ same directory level as aws-config
+import AppSync from './aws-config';
+import { ADD_EVENT, LIST_EVENTS, SUBSCRIBE_EVENTS } from './graphql';
 
 type Entry = {
   id: number;
@@ -28,19 +28,17 @@ export default function HomeScreen() {
   const [remoteEntries, setRemoteEntries] = useState<DynamoEntry[]>([]);
   const ws = useRef<WebSocket | null>(null);
 
-  // Load local entries from AsyncStorage
   useEffect(() => {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem('historyEntries');
         if (stored) setEntries(JSON.parse(stored));
       } catch (error) {
-        console.error('⚠️ Failed to load local entries:', error);
+        console.error('Failed to load local entries:', error);
       }
     })();
   }, []);
 
-  // Fetch initial remote data + connect WebSocket
   useEffect(() => {
     const fetchRemote = async () => {
       try {
@@ -55,27 +53,22 @@ export default function HomeScreen() {
 
         const json = await res.json();
         if (json?.data?.listEvents) setRemoteEntries(json.data.listEvents);
-        else console.log('⚠️ No remote data found or API returned empty list');
+        else console.log('No remote data found');
       } catch (err) {
-        console.error('❌ Failed to fetch remote events:', err);
+        console.error('Failed to fetch remote events:', err);
       }
     };
 
     fetchRemote();
 
-    // --- AppSync real-time subscription setup ---
     ws.current = new WebSocket(AppSync.realtimeEndpoint, 'graphql-ws');
-
     ws.current.onopen = () => {
-      console.log('🔗 Connected to AppSync');
       ws.current?.send(
         JSON.stringify({
           type: 'connection_init',
           payload: { headers: { 'x-api-key': AppSync.apiKey } },
         })
       );
-
-      // Subscribe after connection handshake
       setTimeout(() => {
         ws.current?.send(
           JSON.stringify({
@@ -92,21 +85,18 @@ export default function HomeScreen() {
         const data = JSON.parse(event.data);
         if (data.type === 'data' && data.payload?.data?.onEventAdded) {
           const newEvent = data.payload.data.onEventAdded;
-          console.log('📡 New remote event received:', newEvent);
           setRemoteEntries((prev) => [newEvent, ...prev]);
         }
       } catch (error) {
-        console.error('⚠️ Error parsing WebSocket message:', error);
+        console.error('Error parsing WebSocket message:', error);
       }
     };
 
-    ws.current.onerror = (err) => console.error('⚠️ WebSocket error:', err);
-    ws.current.onclose = () => console.log('🔌 AppSync WebSocket closed');
-
+    ws.current.onerror = (err) => console.error('WebSocket error:', err);
+    ws.current.onclose = () => console.log('AppSync WebSocket closed');
     return () => ws.current?.close();
   }, []);
 
-  // Add new local entry + push to AppSync
   const addEntry = async () => {
     const now = new Date();
     const newEntry: Entry = {
@@ -136,21 +126,19 @@ export default function HomeScreen() {
         }),
       });
       const json = await res.json();
-      if (json?.data?.addEvent) console.log('✅ Event pushed to AppSync:', json.data.addEvent);
-      else console.log('⚠️ Event push response:', json);
+      if (json?.data?.addEvent) console.log('Event pushed:', json.data.addEvent);
     } catch (err) {
-      console.error('❌ Failed to push event to AppSync:', err);
+      console.error('Failed to push event:', err);
     }
   };
 
-  // Clear local AsyncStorage entries
   const clearHistory = async () => {
     try {
       await AsyncStorage.removeItem('historyEntries');
       setEntries([]);
-      console.log('🧹 Local history cleared');
+      console.log('Local history cleared');
     } catch (err) {
-      console.error('❌ Failed to clear local history:', err);
+      console.error('Failed to clear history:', err);
     }
   };
 
@@ -159,12 +147,25 @@ export default function HomeScreen() {
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#A1CEDC' }}
       headerImage={
         <ThemedView style={styles.headerContainer}>
-          <ThemedText type="subtitle" style={styles.headerTitle}>Guardian</ThemedText>
-          <ThemedText type="subtitle" style={styles.headerTitle}>Lens</ThemedText>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextContainer}>
+              <ThemedText type="subtitle" style={styles.headerTitle}>
+                Guardian
+              </ThemedText>
+              <ThemedText type="subtitle" style={styles.headerTitle}>
+                Lens
+              </ThemedText>
+            </View>
+            <Image
+              source={require('@/assets/images/personFalling.png')}
+              style={styles.headerIcon}
+              resizeMode="contain"
+            />
+          </View>
         </ThemedView>
       }
     >
-      {/* LOCAL HISTORY */}
+      {/* Local History */}
       <ThemedView style={styles.section}>
         <ThemedText type="subtitle">Local History</ThemedText>
         <View style={styles.boxContainer}>
@@ -183,7 +184,7 @@ export default function HomeScreen() {
         </View>
       </ThemedView>
 
-      {/* REMOTE EVENTS */}
+      {/* Remote Events */}
       <ThemedView style={styles.section}>
         <ThemedText type="subtitle">Remote Events</ThemedText>
         <ScrollView style={styles.boxContainer}>
@@ -206,7 +207,7 @@ export default function HomeScreen() {
         </ScrollView>
       </ThemedView>
 
-      {/* BUTTONS */}
+      {/* Buttons */}
       <ThemedView style={styles.bottomContainer}>
         <View style={styles.iconContainer}>
           <Image
@@ -234,40 +235,43 @@ export default function HomeScreen() {
   );
 }
 
-// ✅ keep your existing styles — no change
 const styles = StyleSheet.create({
-  // ===== HEADER =====
   headerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 50,
+    width: '100%',
+    paddingVertical: 30,
+    paddingHorizontal: 24,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    backdropFilter: 'blur(8px)', // web/ios friendly
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTextContainer: {
+    flexDirection: 'column',
   },
   headerTitle: {
-    fontSize: 44,
-    fontWeight: '800',
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#0f172a',
     letterSpacing: 1,
-    color: '#0f172a', // deep slate
+    textTransform: 'uppercase',
     textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  headerIcon: {
+    paddingRight: 0,
+    width: 130,   // was 130 → significantly larger
+    height: 210,  // scale proportionally
+    opacity: 0.9,
+    position: "relative",
   },
 
-  // ===== MAIN SECTIONS =====
   section: {
     marginTop: 20,
     marginHorizontal: 20,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 10,
-  },
-
-  // ===== BOXES =====
   boxContainer: {
     flexDirection: 'column',
     gap: 12,
@@ -300,8 +304,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'right',
   },
-
-  // ===== BUTTON AREA =====
   bottomContainer: {
     marginTop: 40,
     alignItems: 'center',
@@ -329,11 +331,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     borderRadius: 12,
     overflow: 'hidden',
-  },
-
-  // ===== MISC =====
-  scrollContainer: {
-    backgroundColor: '#f8fafc',
   },
 });
 

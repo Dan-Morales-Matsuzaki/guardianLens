@@ -236,74 +236,104 @@ export default function HomeScreen() {
 
 // ✅ keep your existing styles — no change
 const styles = StyleSheet.create({
+  // ===== HEADER =====
   headerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffffd7',
+    paddingVertical: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(8px)', // web/ios friendly
   },
   headerTitle: {
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: '#000',
+    fontSize: 44,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: '#0f172a', // deep slate
+    textShadowColor: 'rgba(0,0,0,0.1)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  section: { padding: 16 },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-    paddingHorizontal: 5,
+
+  // ===== MAIN SECTIONS =====
+  section: {
+    marginTop: 20,
+    marginHorizontal: 20,
   },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 10,
+  },
+
+  // ===== BOXES =====
   boxContainer: {
     flexDirection: 'column',
     gap: 12,
-    marginTop: 10,
   },
   roundedBox: {
     borderRadius: 16,
-    backgroundColor: '#f2f2f2df',
-    opacity: 0.9,
-    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   boxText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: '#0f172a',
   },
   boxContent: {
-    color: '#000000ff',
-    fontSize: 13,
-    fontWeight: '600',
-    paddingTop: 4,
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 3,
   },
   boxTimestamp: {
-    color: '#444',
-    fontSize: 11,
-    marginTop: 4,
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 6,
     textAlign: 'right',
   },
+
+  // ===== BUTTON AREA =====
   bottomContainer: {
-    marginTop: 30,
+    marginTop: 40,
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 60,
   },
   iconContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    width: '100%',
-    paddingVertical: 10,
+    justifyContent: 'center',
+    marginBottom: 25,
+    gap: 30,
   },
   icon: {
     width: 60,
     height: 60,
+    opacity: 0.9,
   },
   buttonRow: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    marginTop: 15,
+    justifyContent: 'space-between',
     width: '100%',
   },
   buttonWrapper: {
-    width: '40%',
+    flex: 1,
+    marginHorizontal: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+
+  // ===== MISC =====
+  scrollContainer: {
+    backgroundColor: '#f8fafc',
   },
 });
+

@@ -42,4 +42,4 @@ app-example
 /ios
 /android
 
-app/tabs/AppSync.*
+app/tabs/AppSync.js

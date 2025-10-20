@@ -5,7 +5,7 @@ import { Button, Image, ScrollView, StyleSheet, View } from 'react-native';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import AppSync from './AppSync';
+import AppSync from './AppSync.js';
 
 //""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // import Client from 'aws-appsync';
@@ -97,7 +97,7 @@ export default function HomeScreen() {
         const stored = await AsyncStorage.getItem('historyEntries');
         if (stored) setEntries(JSON.parse(stored));
       } catch (error) {
-        console.error('⚠️ Failed to load local entries:', error);
+        console.error('Failed to load local entries:', error);
       }
     })();
   }, []);
@@ -107,7 +107,7 @@ export default function HomeScreen() {
     const now = new Date();
     const newEntry: Entry = {
       id: Date.now(),
-      deviceName: `Device ${entries.length}`,
+      deviceName: `Device ${entries.length}`, //Manual entry device name
       time: now.toLocaleTimeString(),
     };
     const updated = [newEntry, ...entries];
@@ -164,9 +164,7 @@ export default function HomeScreen() {
                 <ThemedText style={styles.boxText}>Status: {item.status}</ThemedText>
                 <ThemedText style={styles.boxContent}>Message: {item.message}</ThemedText>
                 <ThemedText style={styles.boxContent}>Location: {item.location}</ThemedText>
-                <ThemedText style={styles.boxTimestamp}>
-                  {new Date(item.timestamp).toLocaleString()}
-                </ThemedText>
+                <ThemedText style={styles.boxTimestamp}>{new Date(item.timestamp).toLocaleString()}</ThemedText>
               </ThemedView>
             ))
           ) : (
@@ -194,10 +192,10 @@ export default function HomeScreen() {
 
         <View style={styles.buttonRow}>
           <View style={styles.buttonWrapper}>
-            <Button title="Add Entry" onPress={addEntry} color="#f47b20" />
+            <Button title="Add Entry" onPress={addEntry} color="#e7e7e7b9" />
           </View>
           <View style={styles.buttonWrapper}>
-            <Button title="Clear Local" onPress={clearHistory} color="#999" />
+            <Button title="Clear Local" onPress={clearHistory} color="#e7e7e7b9" />
           </View>
         </View>
       </ThemedView>
@@ -211,7 +209,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f9a683ff',
+    backgroundColor: '#ffffffd7',
   },
   headerTitle: {
     fontFamily: 'Poppins_700Bold',

@@ -17,6 +17,7 @@
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "aws-amplify": "^6.15.7",
     "aws-appsync": "^4.1.10",
     "aws-appsync-react": "^4.0.16",
     "expo": "~54.0.13",

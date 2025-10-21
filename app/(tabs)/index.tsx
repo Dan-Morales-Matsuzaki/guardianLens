@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
 import AppSync from './aws-config';
-import { ADD_EVENT, LIST_EVENTS, SUBSCRIBE_EVENTS } from './graphql';
+import { SUBSCRIBE_EVENTS } from './graphql';
 
 type Entry = {
   id: number;
@@ -15,7 +15,7 @@ type Entry = {
   time: string;
 };
 
-type DynamoEntry = {
+type LiveEvent = {
   id: string;
   status: string;
   message: string;
@@ -25,50 +25,36 @@ type DynamoEntry = {
 
 export default function HomeScreen() {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [remoteEntries, setRemoteEntries] = useState<DynamoEntry[]>([]);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
   const ws = useRef<WebSocket | null>(null);
 
+  // Load local entries
   useEffect(() => {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem('historyEntries');
         if (stored) setEntries(JSON.parse(stored));
       } catch (error) {
-        console.error('Failed to load local entries:', error);
+        console.error('⚠️ Failed to load local entries:', error);
       }
     })();
   }, []);
 
+  // Connect to AppSync realtime and listen for alerts
   useEffect(() => {
-    const fetchRemote = async () => {
-      try {
-        const res = await fetch(AppSync.graphqlEndpoint, {
-          method: 'POST',
-          headers: {
-            'x-api-key': AppSync.apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ query: LIST_EVENTS }),
-        });
-
-        const json = await res.json();
-        if (json?.data?.listEvents) setRemoteEntries(json.data.listEvents);
-        else console.log('No remote data found');
-      } catch (err) {
-        console.error('Failed to fetch remote events:', err);
-      }
-    };
-
-    fetchRemote();
-
     ws.current = new WebSocket(AppSync.realtimeEndpoint, 'graphql-ws');
+
     ws.current.onopen = () => {
+      console.log('WebSocket connected to AppSync');
+      // Initialize connection
       ws.current?.send(
         JSON.stringify({
           type: 'connection_init',
           payload: { headers: { 'x-api-key': AppSync.apiKey } },
         })
       );
+
+      // Subscribe to alert events
       setTimeout(() => {
         ws.current?.send(
           JSON.stringify({
@@ -77,26 +63,29 @@ export default function HomeScreen() {
             payload: { query: SUBSCRIBE_EVENTS },
           })
         );
+        console.log('Subscribed to live AppSync alerts');
       }, 1000);
     };
 
     ws.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'data' && data.payload?.data?.onEventAdded) {
-          const newEvent = data.payload.data.onEventAdded;
-          setRemoteEntries((prev) => [newEvent, ...prev]);
+        if (data.type === 'data' && data.payload?.data?.onAddEvent) {
+          const newEvent = data.payload.data.onAddEvent;
+          console.log('Received alert:', newEvent);
+          setLiveEvents((prev) => [newEvent, ...prev]);
         }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
       }
     };
 
     ws.current.onerror = (err) => console.error('WebSocket error:', err);
-    ws.current.onclose = () => console.log('AppSync WebSocket closed');
+    ws.current.onclose = () => console.log('WebSocket closed');
     return () => ws.current?.close();
   }, []);
 
+  // Add local-only entry (no network)
   const addEntry = async () => {
     const now = new Date();
     const newEntry: Entry = {
@@ -104,39 +93,18 @@ export default function HomeScreen() {
       deviceName: `Device ${entries.length}`,
       time: now.toLocaleTimeString(),
     };
-
     const updated = [newEntry, ...entries];
     setEntries(updated);
     await AsyncStorage.setItem('historyEntries', JSON.stringify(updated));
-
-    try {
-      const res = await fetch(AppSync.graphqlEndpoint, {
-        method: 'POST',
-        headers: {
-          'x-api-key': AppSync.apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: ADD_EVENT,
-          variables: {
-            status: 'Local Entry',
-            message: newEntry.deviceName,
-            location: 'Device',
-          },
-        }),
-      });
-      const json = await res.json();
-      if (json?.data?.addEvent) console.log('Event pushed:', json.data.addEvent);
-    } catch (err) {
-      console.error('Failed to push event:', err);
-    }
+    console.log('🗒️ Added local entry:', newEntry);
   };
 
+  // Clear local entries
   const clearHistory = async () => {
     try {
       await AsyncStorage.removeItem('historyEntries');
       setEntries([]);
-      console.log('Local history cleared');
+      console.log('🧹 Local history cleared');
     } catch (err) {
       console.error('Failed to clear history:', err);
     }
@@ -184,12 +152,12 @@ export default function HomeScreen() {
         </View>
       </ThemedView>
 
-      {/* Remote Events */}
+      {/* Live Alerts */}
       <ThemedView style={styles.section}>
-        <ThemedText type="subtitle">Remote Events</ThemedText>
+        <ThemedText type="subtitle">Live Alerts</ThemedText>
         <ScrollView style={styles.boxContainer}>
-          {remoteEntries.length > 0 ? (
-            remoteEntries.map((item) => (
+          {liveEvents.length > 0 ? (
+            liveEvents.map((item) => (
               <ThemedView key={item.id} style={styles.roundedBox}>
                 <ThemedText style={styles.boxText}>Status: {item.status}</ThemedText>
                 <ThemedText style={styles.boxContent}>Message: {item.message}</ThemedText>
@@ -201,7 +169,7 @@ export default function HomeScreen() {
             ))
           ) : (
             <ThemedView style={styles.roundedBox}>
-              <ThemedText style={styles.boxContent}>No live events yet.</ThemedText>
+              <ThemedText style={styles.boxContent}>No alerts received yet.</ThemedText>
             </ThemedView>
           )}
         </ScrollView>
@@ -210,21 +178,13 @@ export default function HomeScreen() {
       {/* Buttons */}
       <ThemedView style={styles.bottomContainer}>
         <View style={styles.iconContainer}>
-          <Image
-            source={require('@/assets/images/phone.png')}
-            style={styles.icon}
-            resizeMode="contain"
-          />
-          <Image
-            source={require('@/assets/images/emergency.png')}
-            style={styles.icon}
-            resizeMode="contain"
-          />
+          <Image source={require('@/assets/images/phone.png')} style={styles.icon} resizeMode="contain" />
+          <Image source={require('@/assets/images/emergency.png')} style={styles.icon} resizeMode="contain" />
         </View>
 
         <View style={styles.buttonRow}>
           <View style={styles.buttonWrapper}>
-            <Button title="Add Entry" onPress={addEntry} color="#e7e7e7b9" />
+            <Button title="Add Local Entry" onPress={addEntry} color="#e7e7e7b9" />
           </View>
           <View style={styles.buttonWrapper}>
             <Button title="Clear Local" onPress={clearHistory} color="#e7e7e7b9" />
@@ -236,20 +196,9 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    width: '100%',
-    paddingVertical: 30,
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTextContainer: {
-    flexDirection: 'column',
-  },
+  headerContainer: { width: '100%', paddingVertical: 30, paddingHorizontal: 24, backgroundColor: 'rgba(255,255,255,0.15)' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTextContainer: { flexDirection: 'column' },
   headerTitle: {
     fontSize: 56,
     fontWeight: '900',
@@ -260,22 +209,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 4,
   },
-  headerIcon: {
-    paddingRight: 0,
-    width: 130,   // was 130 → significantly larger
-    height: 210,  // scale proportionally
-    opacity: 0.9,
-    position: "relative",
-  },
-
-  section: {
-    marginTop: 20,
-    marginHorizontal: 20,
-  },
-  boxContainer: {
-    flexDirection: 'column',
-    gap: 12,
-  },
+  headerIcon: { width: 130, height: 210, opacity: 0.9, position: 'relative' },
+  section: { marginTop: 20, marginHorizontal: 20 },
+  boxContainer: { flexDirection: 'column', gap: 12 },
   roundedBox: {
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.9)',
@@ -287,50 +223,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  boxText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  boxContent: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 3,
-  },
-  boxTimestamp: {
-    color: '#64748b',
-    fontSize: 12,
-    marginTop: 6,
-    textAlign: 'right',
-  },
-  bottomContainer: {
-    marginTop: 40,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 60,
-  },
-  iconContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 25,
-    gap: 30,
-  },
-  icon: {
-    width: 60,
-    height: 60,
-    opacity: 0.9,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  buttonWrapper: {
-    flex: 1,
-    marginHorizontal: 8,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
+  boxText: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
+  boxContent: { color: '#475569', fontSize: 14, fontWeight: '500', marginTop: 3 },
+  boxTimestamp: { color: '#64748b', fontSize: 12, marginTop: 6, textAlign: 'right' },
+  bottomContainer: { marginTop: 40, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 60 },
+  iconContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 25, gap: 30 },
+  icon: { width: 60, height: 60, opacity: 0.9 },
+  buttonRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  buttonWrapper: { flex: 1, marginHorizontal: 8, borderRadius: 12, overflow: 'hidden' },
 });
-
